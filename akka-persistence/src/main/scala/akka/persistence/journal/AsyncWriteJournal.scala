@@ -60,7 +60,7 @@ trait AsyncWriteJournal extends Actor with WriteJournalBase with AsyncRecovery {
     {
       case WriteMessages(messages, persistentActor, actorInstanceId) ⇒
         val cctr = resequencerCounter
-        resequencerCounter += messages.foldLeft(0)((acc, m) ⇒ acc + m.size) + 1
+        resequencerCounter += messages.foldLeft(1)((acc, m) ⇒ acc + m.size)
 
         val atomicWriteCount = messages.count(_.isInstanceOf[AtomicWrite])
         val prepared = Try(preparePersistentBatch(messages))
@@ -220,6 +220,14 @@ trait AsyncWriteJournal extends Actor with WriteJournalBase with AsyncRecovery {
    * Normally a `PersistentActor` will only have one outstanding write request to the journal but
    * it may emit several write requests when `persistAsync` is used and the max batch size
    * is reached.
+   *
+   * Please note that the `sender` field of the contained PersistentRepr objects has been
+   * nulled out (i.e. set to `ActorRef.noSender`) in order to not use space in the journal
+   * for a sender reference that will likely be obsolete during replay.
+   *
+   * Please also note that requests for the highest sequence number may be made concurrently
+   * to this call executing for the same `persistenceId`, in particular it is possible that
+   * a restarting actor tries to recover before its outstanding writes have completed.
    *
    * This call is protected with a circuit-breaker.
    */
